@@ -560,7 +560,7 @@ final class OverlayView: NSView {
 
         var txt = Annotation(tool: .text, color: Prefs.palette[0], lineWidth: 4)
         txt.start = CGPoint(x: 30, y: region.height - 60)
-        txt.text = "SnapPin 标注"
+        txt.text = "MoShot 标注"
         demo.append(txt)
 
         annotations = demo

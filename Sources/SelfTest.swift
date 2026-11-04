@@ -51,7 +51,7 @@ private func renderTextImage(_ text: String) -> CGImage {
 }
 
 func runSelfTest() -> Bool {
-    print("SnapPin self-test")
+    print("MoShot self-test")
 
     // 1. 基础图构造与像素读取
     let base = makeImage(width: 200, height: 100,
@@ -122,7 +122,7 @@ func runSelfTest() -> Bool {
     }
 
     // 7. 剪贴板写入/读回（用独立剪贴板，避免污染用户剪贴板）
-    let pb = NSPasteboard(name: NSPasteboard.Name("SnapPinSelfTest"))
+    let pb = NSPasteboard(name: NSPasteboard.Name("MoShotSelfTest"))
     if let png = ImageUtil.pngData(base) {
         pb.clearContents()
         pb.setData(png, forType: .png)
@@ -158,7 +158,7 @@ func runSelfTest() -> Bool {
     check("all tools render", allTools)
 
     // 10. OCR（主线程跑 RunLoop 等待，避免 main queue 回调被阻塞）
-    let textImage = renderTextImage("SnapPin 截图")
+    let textImage = renderTextImage("MoShot 截图")
     var ocrText: String?
     var ocrDone = false
     OCRService.recognize(textImage) { t in
@@ -167,7 +167,10 @@ func runSelfTest() -> Bool {
     }
     _ = waitUntil({ ocrDone }, timeout: 90)
     let lower = (ocrText ?? "").lowercased()
-    check("ocr reads latin text", lower.contains("snappin"), "got: \(ocrText ?? "nil")")
+    let alnum = lower.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        .map { String($0) }.joined()
+    let hex = lower.unicodeScalars.prefix(14).map { String($0.value, radix: 16) }.joined(separator: " ")
+    check("ocr reads latin text", alnum.contains("moshot"), "got: \(ocrText ?? "nil") [hex \(hex)]")
     check("ocr reads chinese text", (ocrText ?? "").contains("截"), "got: \(ocrText ?? "nil")")
 
     // 11. 屏幕常量

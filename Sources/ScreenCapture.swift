@@ -21,7 +21,7 @@ enum ScreenCapture {
                 let shots = try await captureWithSCK()
                 if !shots.isEmpty { return shots }
             } catch {
-                NSLog("SnapPin: SCK capture failed: \(error)")
+                NSLog("MoShot: SCK capture failed: \(error)")
             }
         }
         // 回退：系统 screencapture CLI（在 SCK 不可用时仍能工作）
@@ -55,7 +55,7 @@ enum ScreenCapture {
     static func captureWithCLI(_ screen: NSScreen) -> ScreenShot? {
         let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0
         let tmp = FileManager.default.temporaryDirectory
-            .appendingPathComponent("snappin-\(UUID().uuidString).png")
+            .appendingPathComponent("moshot-\(UUID().uuidString).png")
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
         proc.arguments = ["-x", "-D", "\(id)", "-t", "png", tmp.path]

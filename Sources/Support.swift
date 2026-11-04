@@ -226,7 +226,7 @@ enum Prefs {
     static func suggestedFilename() -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd-HHmmss"
-        return "SnapPin-\(f.string(from: Date())).png"
+        return "MoShot-\(f.string(from: Date())).png"
     }
 }
 

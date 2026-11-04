@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build SnapPin.app with the system Swift toolchain (no Xcode project needed).
+# Build MoShot.app with the system Swift toolchain (no Xcode project needed).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP="$ROOT/build/SnapPin.app"
-BIN="$APP/Contents/MacOS/SnapPin"
+APP="$ROOT/build/MoShot.app"
+BIN="$APP/Contents/MacOS/MoShot"
 
 echo "==> cleaning"
 rm -rf "$APP"

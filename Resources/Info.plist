@@ -5,15 +5,15 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
-    <string>SnapPin</string>
+    <string>MoShot</string>
     <key>CFBundleIdentifier</key>
-    <string>com.moxian.snappin</string>
+    <string>com.moxian.moshot</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>SnapPin</string>
+    <string>MoShot</string>
     <key>CFBundleDisplayName</key>
-    <string>SnapPin</string>
+    <string>MoShot</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

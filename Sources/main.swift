@@ -1,7 +1,7 @@
 import Cocoa
 import Carbon.HIToolbox
 
-let SnapPinVersion = "1.0.0"
+let MoShotVersion = "1.0.0"
 
 // MARK: - CLI 入口（无 GUI，便于自动化验证与集成）
 
@@ -43,7 +43,7 @@ private func runCaptureCLI(path: String, displayIndex: Int) -> Int32 {
 let args = CommandLine.arguments
 
 if args.contains("--version") {
-    print("SnapPin \(SnapPinVersion)")
+    print("MoShot \(MoShotVersion)")
     exit(0)
 }
 
@@ -51,13 +51,13 @@ _ = NSApplication.shared
 
 if args.contains("--help") || args.contains("-h") {
     print("""
-    SnapPin \(SnapPinVersion) — macOS 截图标注工具
+    MoShot \(MoShotVersion) — macOS 截图标注工具
 
     用法:
-      SnapPin                     常驻菜单栏，⌘⇧A 截图
-      SnapPin --capture <path>    直接抓取主屏存 PNG（无 GUI）
-      SnapPin --selftest          运行内置自检
-      SnapPin --version           打印版本
+      MoShot                     常驻菜单栏，⌘⇧A 截图
+      MoShot --capture <path>    直接抓取主屏存 PNG（无 GUI）
+      MoShot --selftest          运行内置自检
+      MoShot --version           打印版本
     """)
     exit(0)
 }
@@ -100,7 +100,7 @@ if let i = args.firstIndex(of: "--simulate"), i + 1 < args.count {
 // 环境诊断：不抓屏、不弹窗，只报告热键/权限/状态栏是否就绪
 if args.contains("--diagnose") {
     var lines: [String] = []
-    lines.append("version=\(SnapPinVersion)")
+    lines.append("version=\(MoShotVersion)")
     lines.append("screens=\(NSScreen.screens.count)")
     for s in NSScreen.screens {
         lines.append("  screen \(Int(s.frame.width))x\(Int(s.frame.height))@\(s.backingScaleFactor)x")

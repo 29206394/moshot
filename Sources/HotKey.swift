@@ -32,10 +32,10 @@ final class HotKey {
         let status = RegisterEventHotKey(keyCode, modifiers, hkID,
                                          GetApplicationEventTarget(), 0, &ref)
         if status != noErr {
-            NSLog("SnapPin: RegisterEventHotKey failed status=\(status)")
+            NSLog("MoShot: RegisterEventHotKey failed status=\(status)")
         } else {
             isRegistered = true
-            NSLog("SnapPin: hotkey registered \(description)")
+            NSLog("MoShot: hotkey registered \(description)")
         }
     }
 

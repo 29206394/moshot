@@ -1,4 +1,4 @@
-# SnapPin
+# MoShot
 
 轻量 macOS 截图标注工具。给没有飞书 / 微信的机器一块顺手的截图能力：框选即标注，回车进剪贴板，⌘S 存文件，P 贴图钉在屏幕上。
 
@@ -10,7 +10,7 @@
 
 ## 为什么做
 
-飞书、微信自带的截图很好用，但只在你装了它们、并且登录着的时候好用。CI 机器、干净的开发机、跳板机、临时虚拟机通常没有这些 app，系统自带的 ⇧⌘4 又只能截不能标。SnapPin 补的就是这个缺口：一个约 350 KB 的菜单栏小工具，双击就能用。
+飞书、微信自带的截图很好用，但只在你装了它们、并且登录着的时候好用。CI 机器、干净的开发机、跳板机、临时虚拟机通常没有这些 app，系统自带的 ⇧⌘4 又只能截不能标。MoShot 补的就是这个缺口：一个约 350 KB 的菜单栏小工具，双击就能用。
 
 ## 功能
 
@@ -26,7 +26,7 @@
 | 序号 | 自动递增编号标记 |
 | 撤销 / 重做 | ⌘Z / ⇧⌘Z，也支持 Delete 删除最后一条 |
 | 复制 | Enter 或 ⌘C，PNG 进剪贴板 |
-| 保存 | ⌘S，默认存到 `~/Downloads/SnapPin-<时间戳>.png` |
+| 保存 | ⌘S，默认存到 `~/Downloads/MoShot-<时间戳>.png` |
 | 贴图 | P，无边框置顶窗口，可拖动、滚轮缩放、双击关闭、右键复制/保存 |
 | 提取文字 | 系统 Vision OCR，中文 + 英文，结果进剪贴板并弹窗可编辑 |
 | 多屏 | 每块屏幕独立遮罩，鼠标所在屏获得焦点 |
@@ -39,32 +39,32 @@
 需要 macOS 14+ 与 Xcode 命令行工具（`xcode-select --install`）。
 
 ```bash
-git clone https://github.com/29206394/snappin.git
-cd snappin
-./build.sh            # 产物在 build/SnapPin.app
-open build/SnapPin.app
+git clone https://github.com/29206394/moshot.git
+cd moshot
+./build.sh            # 产物在 build/MoShot.app
+open build/MoShot.app
 ```
 
-也可以把 `build/SnapPin.app` 拖进 `/Applications`。
+也可以把 `build/MoShot.app` 拖进 `/Applications`。
 
 ### 从 Release 下载
 
-下载 `SnapPin.app.zip` 解压后放入 `/Applications`。因为没做 Apple 公证，首次打开需要放行：
+下载 `MoShot.app.zip` 解压后放入 `/Applications`。因为没做 Apple 公证，首次打开需要放行：
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/SnapPin.app
-open /Applications/SnapPin.app
+xattr -dr com.apple.quarantine /Applications/MoShot.app
+open /Applications/MoShot.app
 ```
 
 ## 首次使用：屏幕录制权限
 
 macOS 不允许任何 app 在未授权时读取屏幕内容。
 
-1. 启动 SnapPin，按 `⌥⇧A`
-2. 系统弹出「SnapPin 想要录制此电脑的屏幕」→ 点「允许」
+1. 启动 MoShot，按 `⌥⇧A`
+2. 系统弹出「MoShot 想要录制此电脑的屏幕」→ 点「允许」
 3. 直接继续截图
 
-如果没弹窗或点过拒绝，到「系统设置 › 隐私与安全性 › 屏幕录制」里勾选 SnapPin，然后重新发起截图。
+如果没弹窗或点过拒绝，到「系统设置 › 隐私与安全性 › 屏幕录制」里勾选 MoShot，然后重新发起截图。
 
 > 用 `./build.sh` 重新构建后，ad-hoc 签名会变，系统可能要求重新勾选一次。稳定使用就别反复重建。
 
@@ -87,8 +87,8 @@ macOS 不允许任何 app 在未授权时读取屏幕内容。
 默认用 `⌥⇧A`，是为了避开飞书和微信占用的 `⌘⇧A`。如果你机器上没装它们，可以改回去：
 
 ```bash
-defaults write com.moxian.snappin hotkey "cmd+shift+A"
-# 重启 SnapPin 生效
+defaults write com.moxian.moshot hotkey "cmd+shift+A"
+# 重启 MoShot 生效
 ```
 
 支持 `cmd` / `opt` / `ctrl` / `shift` 组合，也认 `⌘⌥⌃⇧` 符号，例如 `"ctrl+opt+S"`。
@@ -98,10 +98,10 @@ defaults write com.moxian.snappin hotkey "cmd+shift+A"
 无 GUI 模式，方便集成进脚本或 CI：
 
 ```bash
-SnapPin --capture out.png     # 抓主屏存 PNG
-SnapPin --selftest            # 18 项内置自检（渲染/裁剪/马赛克/编码/剪贴板/OCR）
-SnapPin --diagnose            # 打印屏幕、权限、热键、状态栏就绪状态
-SnapPin --version
+MoShot --capture out.png     # 抓主屏存 PNG
+MoShot --selftest            # 18 项内置自检（渲染/裁剪/马赛克/编码/剪贴板/OCR）
+MoShot --diagnose            # 打印屏幕、权限、热键、状态栏就绪状态
+MoShot --version
 ```
 
 `--selftest` 全部离线跑，不弹窗、不抢焦点，首次 OCR 用例会花约 30 秒加载 Vision 模型。

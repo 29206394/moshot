@@ -15,10 +15,10 @@ final class StatusBar {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
             button.image = NSImage(systemSymbolName: "camera.viewfinder",
-                                   accessibilityDescription: "SnapPin")
+                                   accessibilityDescription: "MoShot")
             button.image?.isTemplate = true
             button.imagePosition = .imageOnly
-            button.toolTip = "SnapPin — 截图 \(hotKeyLabel)"
+            button.toolTip = "MoShot — 截图 \(hotKeyLabel)"
         }
         buildMenu()
     }
@@ -42,7 +42,7 @@ final class StatusBar {
 
         menu.addItem(.separator())
 
-        let about = NSMenuItem(title: "关于 SnapPin", action: #selector(showAbout), keyEquivalent: "")
+        let about = NSMenuItem(title: "关于 MoShot", action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
 
@@ -60,7 +60,7 @@ final class StatusBar {
 
     @objc private func showAbout() {
         let alert = NSAlert()
-        alert.messageText = "SnapPin \(SnapPinVersion)"
+        alert.messageText = "MoShot \(MoShotVersion)"
         alert.informativeText = "轻量 macOS 截图标注工具\n\(hotKeyLabel) 截图 · Enter 复制 · ⌘S 保存 · P 贴图"
         alert.addButton(withTitle: "好")
         alert.runModal()
@@ -74,9 +74,9 @@ final class StatusBar {
         button.toolTip = text
         resetTimer = Timer.scheduledTimer(withTimeInterval: 1.6, repeats: false) { [weak self] _ in
             guard let self = self, let b = self.item.button else { return }
-            b.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "SnapPin")
+            b.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "MoShot")
             b.image?.isTemplate = true
-            b.toolTip = "SnapPin — 截图 \(self.hotKeyLabel)"
+            b.toolTip = "MoShot — 截图 \(self.hotKeyLabel)"
         }
     }
 }
@@ -92,9 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotKey = HotKey(keyCode: parsed.0, modifiers: parsed.1) {
             OverlayController.shared.begin(fullScreen: false)
         }
-        NSLog("SnapPin: ready (version \(SnapPinVersion)), statusItem=\(StatusBar.shared != nil)")
+        NSLog("MoShot: ready (version \(MoShotVersion)), statusItem=\(StatusBar.shared != nil)")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            NSLog("SnapPin: statusItem visible=\(StatusBar.shared?.item.button != nil)")
+            NSLog("MoShot: statusItem visible=\(StatusBar.shared?.item.button != nil)")
         }
     }
 

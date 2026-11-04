@@ -147,7 +147,7 @@ final class OverlayController {
             flashStatus("已保存 \(url.lastPathComponent)")
             return url
         } catch {
-            NSLog("SnapPin: save failed \(error)")
+            NSLog("MoShot: save failed \(error)")
             return nil
         }
     }
@@ -256,7 +256,7 @@ final class OverlayController {
     private func showPermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "需要屏幕录制权限"
-        alert.informativeText = "在 系统设置 › 隐私与安全性 › 屏幕录制 中勾选 SnapPin，然后重新发起截图。"
+        alert.informativeText = "在 系统设置 › 隐私与安全性 › 屏幕录制 中勾选 MoShot，然后重新发起截图。"
         alert.addButton(withTitle: "打开系统设置")
         alert.addButton(withTitle: "取消")
         let resp = alert.runModal()
@@ -288,7 +288,7 @@ enum OCRService {
                 let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
                 DispatchQueue.main.async { completion(lines.joined(separator: "\n")) }
             } catch {
-                NSLog("SnapPin: OCR failed \(error)")
+                NSLog("MoShot: OCR failed \(error)")
                 DispatchQueue.main.async { completion("") }
             }
         }
