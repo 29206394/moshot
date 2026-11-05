@@ -55,7 +55,7 @@ if args.contains("--help") || args.contains("-h") {
     MoShot \(MoShotVersion) — macOS 截图标注工具
 
     用法:
-      MoShot                     常驻菜单栏，⌘⇧A 截图
+      MoShot                     常驻菜单栏，⌥⇧A 截图
       MoShot --capture <path>    直接抓取主屏存 PNG（无 GUI）
       MoShot --selftest          运行内置自检
       MoShot --version           打印版本
