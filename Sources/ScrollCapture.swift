@@ -169,7 +169,14 @@ final class ScrollCapture {
 
     // MARK: - 抓屏
 
+    /// 抓帧前后回调：用来临时藏掉取景框（.screenSaver 层的窗口会被 screencapture 一起拍进去，
+    /// 每帧同一位置都有一条蓝边，拼接时就会认错重叠区，结果就是花图）
+    var beforeGrab: (() -> Void)?
+    var afterGrab: (() -> Void)?
+
     private func grab(_ rect: CGRect) -> CGImage? {
+        beforeGrab?()
+        defer { afterGrab?() }
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("moshot-scroll-\(UUID().uuidString).png")
         let p = Process()

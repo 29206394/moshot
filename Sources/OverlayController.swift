@@ -143,6 +143,9 @@ final class OverlayController {
         showScrollFrame(region: region)
         let cap = ScrollCapture(config: ScrollCapture.Config(region: region))
         scrollCapture = cap
+        // 抓帧瞬间把取景框藏掉（alpha=0 的窗口不参与合成，抓不到），抓完立刻恢复
+        cap.beforeGrab = { [weak self] in self?.scrollFrame?.alphaValue = 0 }
+        cap.afterGrab = { [weak self] in self?.scrollFrame?.alphaValue = 1 }
         showScrollHUD(near: region, text: "请滚动要截取的内容 · 停住约 2 秒自动完成")
 
         cap.onProgress = { [weak self] frames, px in
@@ -196,11 +199,21 @@ final class OverlayController {
     private func showScrollHUD(near region: CGRect, text: String) {
         let w: CGFloat = 400, h: CGFloat = 36
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
-        var top = region.maxY + 22
-        if top + h > primaryH - 8 { top = region.minY - h - 22 }
-        if top < 8 { top = 8 }
-        let win = NSWindow(contentRect: NSRect(x: region.midX - w / 2, y: primaryH - top - h,
-                                              width: w, height: h),
+        // region 是左上原点全局坐标，先换回 AppKit 全局坐标（左下原点）
+        let appRect = NSRect(x: region.minX, y: primaryH - region.maxY,
+                             width: region.width, height: region.height)
+        // 按「选区落在哪块屏」算边界。以前一律用主屏高度做 clamp，
+        // 在扩展屏上截屏时会被夹到主屏顶部去。
+        let screen = NSScreen.screens.first { $0.frame.intersects(appRect) }
+            ?? NSScreen.main ?? NSScreen.screens[0]
+        let sf = screen.frame
+        var y = appRect.minY - h - 22          // 优先放选区下方
+        if y < sf.minY + 8 { y = appRect.maxY + 22 }   // 下方不够就放上方
+        if y + h > sf.maxY - 8 { y = sf.maxY - h - 8 }
+        if y < sf.minY + 8 { y = sf.minY + 8 }
+        var x = appRect.midX - w / 2
+        x = min(max(x, sf.minX + 8), sf.maxX - w - 8)
+        let win = NSWindow(contentRect: NSRect(x: x, y: y, width: w, height: h),
                            styleMask: .borderless, backing: .buffered, defer: false)
         win.level = .screenSaver
         win.isOpaque = false
