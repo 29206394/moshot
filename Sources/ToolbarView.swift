@@ -1,7 +1,7 @@
 import Cocoa
 
 enum ToolbarAction: String {
-    case undo, redo, ocr, save, copy, pin, close
+    case undo, redo, ocr, save, copy, pin, scroll, close
 }
 
 /// 单个图标按钮（自绘，hover/active 高亮）
@@ -11,6 +11,8 @@ final class IconButton: NSView {
     var action: (() -> Void)?
     var isActive: Bool = false { didSet { needsDisplay = true } }
     var isEnabled: Bool = true { didSet { needsDisplay = true } }
+    /// 悬停变化回调（自己画提示气泡，不依赖系统 toolTip）
+    var onHoverChange: ((Bool) -> Void)?
     private var hovering = false { didSet { needsDisplay = true } }
 
     init(symbol: String, tooltip: String) {
@@ -29,8 +31,14 @@ final class IconButton: NSView {
                                        options: [.mouseEnteredAndExited, .activeAlways],
                                        owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        onHoverChange?(true)
+    }
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        onHoverChange?(false)
+    }
 
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
@@ -60,6 +68,9 @@ final class DotButton: NSView {
     let color: NSColor
     var action: (() -> Void)?
     var isActive: Bool = false { didSet { needsDisplay = true } }
+    /// 悬停提示文字（颜色点 / 线宽点）
+    var hoverText: String = ""
+    var onHoverChange: ((Bool) -> Void)?
     private var hovering = false { didSet { needsDisplay = true } }
     /// 直径（线宽点用不同大小）
     var dotDiameter: CGFloat = 12
@@ -79,8 +90,14 @@ final class DotButton: NSView {
                                        options: [.mouseEnteredAndExited, .activeAlways],
                                        owner: self, userInfo: nil))
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func mouseEntered(with event: NSEvent) {
+        hovering = true
+        onHoverChange?(true)
+    }
+    override func mouseExited(with event: NSEvent) {
+        hovering = false
+        onHoverChange?(false)
+    }
     override func mouseDown(with event: NSEvent) { action?() }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -141,6 +158,9 @@ final class ToolbarView: NSView {
         }
     }
 
+    /// 悬停提示：(文字, 按钮在工具条内的 frame)；文字为 nil 表示收起
+    var onTooltip: ((String?, NSRect) -> Void)?
+
     init() {
         super.init(frame: .zero)
         wantsLayer = true
@@ -148,20 +168,34 @@ final class ToolbarView: NSView {
         for tool in Tool.allCases {
             let b = IconButton(symbol: tool.symbolName, tooltip: tool.title)
             b.action = { [weak self] in self?.select(tool: tool) }
+            b.onHoverChange = { [weak self, weak b] inside in
+                guard let b = b else { return }
+                self?.onTooltip?(inside ? b.tooltip : nil, b.frame)
+            }
             addSubview(b)
             toolButtons[tool] = b
         }
 
         for (i, c) in Prefs.palette.enumerated() {
             let d = DotButton(color: c, diameter: 13)
+            d.hoverText = "颜色 \(i + 1)"
             d.action = { [weak self] in self?.select(color: i) }
+            d.onHoverChange = { [weak self, weak d] inside in
+                guard let d = d else { return }
+                self?.onTooltip?(inside ? d.hoverText : nil, d.frame)
+            }
             addSubview(d)
             colorDots.append(d)
         }
 
         for (i, w) in Prefs.widths.enumerated() {
             let d = DotButton(color: NSColor(white: 0.92, alpha: 1), diameter: 4 + w * 1.4)
+            d.hoverText = "线宽 \(Int(w))"
             d.action = { [weak self] in self?.select(width: i) }
+            d.onHoverChange = { [weak self, weak d] inside in
+                guard let d = d else { return }
+                self?.onTooltip?(inside ? d.hoverText : nil, d.frame)
+            }
             addSubview(d)
             widthDots.append(d)
         }
@@ -169,6 +203,7 @@ final class ToolbarView: NSView {
         let actions: [(ToolbarAction, String, String)] = [
             (.undo, "arrow.uturn.backward", "撤销 ⌘Z"),
             (.redo, "arrow.uturn.forward", "重做 ⇧⌘Z"),
+            (.scroll, "chevron.up.chevron.down", "滚动截图 S"),
             (.ocr, "text.viewfinder", "提取文字"),
             (.close, "xmark", "取消 Esc"),
             (.pin, "pin", "贴图 P"),
@@ -178,6 +213,10 @@ final class ToolbarView: NSView {
         for (a, sym, tip) in actions {
             let b = IconButton(symbol: sym, tooltip: tip)
             b.action = { [weak self] in self?.onAction?(a) }
+            b.onHoverChange = { [weak self, weak b] inside in
+                guard let b = b else { return }
+                self?.onTooltip?(inside ? b.tooltip : nil, b.frame)
+            }
             addSubview(b)
             actionButtons[a] = b
         }
@@ -194,7 +233,7 @@ final class ToolbarView: NSView {
         items.append(contentsOf: Tool.allCases.compactMap { toolButtons[$0] })
         items.append(contentsOf: colorDots)
         items.append(contentsOf: widthDots)
-        items.append(contentsOf: [ToolbarAction.undo, .redo, .ocr, .close, .pin, .save, .copy].compactMap { actionButtons[$0] })
+        items.append(contentsOf: [ToolbarAction.undo, .redo, .ocr, .scroll, .close, .pin, .save, .copy].compactMap { actionButtons[$0] })
         return items
     }
 
@@ -204,7 +243,7 @@ final class ToolbarView: NSView {
             Tool.allCases.compactMap { toolButtons[$0] },
             colorDots,
             widthDots,
-            [ToolbarAction.undo, .redo, .ocr, .close, .pin, .save, .copy].compactMap { actionButtons[$0] },
+            [ToolbarAction.undo, .redo, .ocr, .scroll, .close, .pin, .save, .copy].compactMap { actionButtons[$0] },
         ]
         var w = padding * 2
         for (gi, g) in groups.enumerated() {
@@ -223,7 +262,7 @@ final class ToolbarView: NSView {
             Tool.allCases.compactMap { toolButtons[$0] },
             colorDots,
             widthDots,
-            [ToolbarAction.undo, .redo, .ocr, .close, .pin, .save, .copy].compactMap { actionButtons[$0] },
+            [ToolbarAction.undo, .redo, .ocr, .scroll, .close, .pin, .save, .copy].compactMap { actionButtons[$0] },
         ]
         var x = padding
         let h = bounds.height

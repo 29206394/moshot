@@ -1,7 +1,7 @@
 import Cocoa
 import Vision
 
-enum FinishAction { case copy, save, pin }
+enum FinishAction { case copy, save, pin, scroll }
 
 final class OverlayWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -69,6 +69,9 @@ final class OverlayView: NSView {
             guard let self = self else { return }
             self.lineWidth = Prefs.widths[i]
         }
+        tb.onTooltip = { [weak self] text, anchor in
+            self?.showTooltip(text, anchor: anchor)
+        }
         tb.onAction = { [weak self] action in
             guard let self = self else { return }
             switch action {
@@ -77,6 +80,7 @@ final class OverlayView: NSView {
             case .copy: self.onFinish?(self, .copy)
             case .save: self.onFinish?(self, .save)
             case .pin: self.onFinish?(self, .pin)
+            case .scroll: self.onFinish?(self, .scroll)
             case .close: self.onCancel?(self)
             case .ocr:
                 if let img = self.resultImage(includeAnnotations: false) { self.onOCR?(img) }
@@ -84,6 +88,63 @@ final class OverlayView: NSView {
         }
         addSubview(tb)
         toolbar = tb
+    }
+
+    // MARK: - 悬停提示（自绘，系统 toolTip 在 .screenSaver 级覆层上看不见）
+
+    private lazy var tooltipBox: NSView = {
+        let box = NSView(frame: .zero)
+        box.wantsLayer = true
+        box.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.93).cgColor
+        box.layer?.cornerRadius = 6
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = NSColor(white: 1, alpha: 0.16).cgColor
+        box.isHidden = true
+        let label = NSTextField(labelWithString: "")
+        label.tag = 99
+        label.font = .systemFont(ofSize: 11, weight: .medium)
+        label.textColor = NSColor(white: 0.97, alpha: 1)
+        label.alignment = .center
+        box.addSubview(label)
+        return box
+    }()
+
+    private func showTooltip(_ text: String?, anchor: NSRect?) {
+        guard let text = text, let anchor = anchor, let tb = toolbar, !text.isEmpty,
+              let label = tooltipBox.viewWithTag(99) as? NSTextField else {
+            tooltipBox.isHidden = true
+            return
+        }
+        label.stringValue = text
+        label.sizeToFit()
+        let textSize = label.frame.size
+        let boxW = textSize.width + 18
+        let boxH: CGFloat = 24
+
+        let r = tb.convert(anchor, to: self)
+        var x = r.midX - boxW / 2
+        var y = r.maxY + 7
+        if y + boxH > bounds.maxY - 4 { y = r.minY - boxH - 7 }
+        x = max(6, min(x, bounds.maxX - boxW - 6))
+        y = max(6, y)
+
+        tooltipBox.frame = NSRect(x: x, y: y, width: boxW, height: boxH)
+        label.frame = NSRect(x: 9, y: (boxH - textSize.height) / 2,
+                             width: textSize.width, height: textSize.height)
+        if tooltipBox.superview == nil { addSubview(tooltipBox) }
+        addSubview(tooltipBox, positioned: .above, relativeTo: nil)
+        tooltipBox.isHidden = false
+    }
+
+    /// 选区在屏幕上的全局坐标，左上原点（与 screencapture -R 一致）
+    func globalRegion() -> CGRect? {
+        guard let win = window, selection.width > 8, selection.height > 8 else { return nil }
+        let screenRect = win.convertToScreen(selection)   // 仍是左下原点
+        let primaryH = NSScreen.screens.first?.frame.height ?? 0
+        return CGRect(x: screenRect.minX,
+                      y: primaryH - screenRect.maxY,
+                      width: screenRect.width,
+                      height: screenRect.height)
     }
 
     // MARK: - 绘制
@@ -512,6 +573,8 @@ final class OverlayView: NSView {
                 if mode == .editing { onFinish?(self, .copy) }
             } else if cmd && ch == "s" {
                 if mode == .editing { onFinish?(self, .save) }
+            } else if !cmd && ch == "s" {
+                onFinish?(self, .scroll)
             } else if !cmd && ch == "p" {
                 if mode == .editing { onFinish?(self, .pin) }
             } else if !cmd, let n = Int(ch), n >= 1, n <= Tool.allCases.count {
@@ -537,6 +600,13 @@ final class OverlayView: NSView {
     }
 
     /// 端到端模拟（供 CLI 验证：真实屏幕 → 裁剪 → 标注 → 导出，不显示任何窗口）
+    /// 自检用：在工具条中部弹一个提示气泡
+    func debugShowTooltip(_ text: String) {
+        guard let tb = toolbar else { return }
+        let anchor = NSRect(x: tb.bounds.midX - 15, y: tb.bounds.midY - 15, width: 30, height: 30)
+        showTooltip(text, anchor: anchor)
+    }
+
     func simulate(region: CGRect) -> CGImage? {
         selection = region
         mode = .editing

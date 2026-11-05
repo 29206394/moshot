@@ -40,6 +40,10 @@ final class StatusBar {
         folder.target = self
         menu.addItem(folder)
 
+        let restart = NSMenuItem(title: "重新启动 MoShot", action: #selector(restartApp), keyEquivalent: "")
+        restart.target = self
+        menu.addItem(restart)
+
         menu.addItem(.separator())
 
         let about = NSMenuItem(title: "关于 MoShot", action: #selector(showAbout), keyEquivalent: "")
@@ -55,6 +59,19 @@ final class StatusBar {
 
     @objc private func shotRegion() { OverlayController.shared.begin(fullScreen: false) }
     @objc private func shotFull() { OverlayController.shared.begin(fullScreen: true) }
+    @objc private func restartApp() {
+        // 交给 launchd 起新实例：直接 Process 起的子 shell 会随 NSApp.terminate
+        // 一起被杀（sleep 还没结束就被带走），新实例根本起不来，app 就凭空消失了。
+        let label = "com.moxian.moshot.relaunch.\(Int(Date().timeIntervalSince1970))"
+        let cmd = "sleep 1.2; /usr/bin/open -n \"\(Bundle.main.bundlePath)\""
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        p.arguments = ["submit", "-l", label, "--", "/bin/sh", "-c", cmd]
+        try? p.run()
+        p.waitUntilExit()
+        NSApp.terminate(nil)
+    }
+
     @objc private func openFolder() { NSWorkspace.shared.open(Prefs.saveDirectory) }
     @objc private func quit() { NSApp.terminate(nil) }
 
@@ -86,6 +103,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 真机排障：记录 app 自己启动时看到的权限（终端跑 --diagnose 会继承终端权限）
+        let boot = "launch: hasPermission=\(ScreenCapture.hasPermission) pid=\(ProcessInfo.processInfo.processIdentifier)\n"
+        try? boot.write(toFile: "/tmp/moshot-perm.log", atomically: true, encoding: .utf8)
+
         StatusBar.shared = StatusBar()
         let spec = HotKey.defaultSpec()
         let parsed = HotKey.parse(spec) ?? (UInt32(kVK_ANSI_A), UInt32(optionKey | shiftKey))

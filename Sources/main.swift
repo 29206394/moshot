@@ -1,7 +1,8 @@
 import Cocoa
+import ApplicationServices
 import Carbon.HIToolbox
 
-let MoShotVersion = "1.0.0"
+let MoShotVersion = "1.1.0"
 
 // MARK: - CLI 入口（无 GUI，便于自动化验证与集成）
 
@@ -71,6 +72,81 @@ if args.contains("--selftest") {
 }
 
 // 端到端模拟：真实抓屏 → 中间区域裁剪 → 叠加标注 → 存 PNG（无窗口、无焦点抢占）
+if args.contains("--scroll-selftest") {
+    OverlayController.shared.begin(fullScreen: false)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+        OverlayController.shared.debugScrollSelftest()
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        p.arguments = ["-x", "/tmp/scroll-selftest.png"]
+        try? p.run(); p.waitUntilExit()
+        print("shot /tmp/scroll-selftest.png")
+        if let log = try? String(contentsOfFile: "/tmp/moshot-scroll.log", encoding: .utf8) {
+            print("--- log ---"); print(log)
+        } else {
+            print("--- no log file ---")
+        }
+        exit(0)
+    }
+    NSApplication.shared.run()
+}
+
+if args.contains("--frame-demo") {
+    let c = OverlayController()
+    c.debugScrollFrame()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) {
+        let tmp = "/tmp/moshot-frame.png"
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        p.arguments = ["-x", tmp]
+        try? p.run(); p.waitUntilExit()
+        print("saved \(tmp)")
+        exit(0)
+    }
+    NSApplication.shared.run()
+}
+
+if args.contains("--hud-demo") {
+    let c = OverlayController()
+    c.debugScrollHUD()
+    RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+    let tmp = "/tmp/moshot-hud.png"
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    p.arguments = ["-x", tmp]
+    try? p.run(); p.waitUntilExit()
+    print("saved \(tmp)")
+    exit(0)
+}
+
+if let i = args.firstIndex(of: "--tooltip-demo"), i + 1 < args.count {
+    let out = args[i + 1]
+    let done = DispatchSemaphore(value: 0)
+    Task {
+        let shots = await ScreenCapture.captureAll()
+        guard let shot = shots.first else { print("no screen"); exit(1) }
+        let view = OverlayView(shot: shot)
+        view.frame = NSRect(origin: .zero, size: shot.screen.frame.size)
+        view.startWithFullSelection()
+        view.layoutSubtreeIfNeeded()
+        view.debugShowTooltip("滚动截图 S")
+        view.displayIfNeeded()
+        let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+        view.cacheDisplay(in: view.bounds, to: rep)
+        if let data = rep.representation(using: .png, properties: [:]) {
+            try? data.write(to: URL(fileURLWithPath: out))
+            print("saved \(out)")
+        }
+        done.signal()
+    }
+    while done.wait(timeout: .now() + 0.1) == .timedOut {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+    exit(0)
+}
+
 if let i = args.firstIndex(of: "--simulate"), i + 1 < args.count {
     let out = args[i + 1]
     var done = false
@@ -106,6 +182,7 @@ if args.contains("--diagnose") {
         lines.append("  screen \(Int(s.frame.width))x\(Int(s.frame.height))@\(s.backingScaleFactor)x")
     }
     lines.append("screenPermission=\(ScreenCapture.hasPermission)")
+    lines.append("accessibilityTrusted=\(AXIsProcessTrusted())   // 自动滚动截图需要它")
     let hkSpec = HotKey.parse(HotKey.defaultSpec()) ?? (UInt32(kVK_ANSI_A), UInt32(optionKey | shiftKey))
     let hk = HotKey(keyCode: hkSpec.0, modifiers: hkSpec.1) {}
     lines.append("hotkey=\(hk.description) registered=\(hk.isRegistered)")
@@ -122,3 +199,5 @@ let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
 app.run()
+
+// 权限实验：改一行触发重建
