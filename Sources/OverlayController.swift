@@ -13,6 +13,8 @@ final class OverlayController {
     private var toastWindow: NSWindow?
     private var scrollFrame: NSWindow?
     private var permissionWatch: Timer?
+    private var resetPrompt: NSWindow?
+    private var resetTargets: [ClosureTarget] = []
     private var probing = false
     private var ocrWindow: NSWindow?
     private(set) var isActive = false
@@ -67,6 +69,10 @@ final class OverlayController {
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
             tick += 1
+            if tick == 30, !ScreenCapture.hasPermission {
+                // 30 秒还没生效：多半是 TCC 里那条旧记录的 csreq 指向旧身份，勾了也不会匹配
+                self.offerTCCResetIfStale()
+            }
             if ScreenCapture.hasPermission {
                 t.invalidate()
                 self.permissionWatch = nil
@@ -578,8 +584,12 @@ final class OverlayController {
         }
         permissionWatch?.invalidate()
         let deadline = Date().addingTimeInterval(180)   // 最多盯 3 分钟
+        let started = Date()
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] t in
             guard let self else { t.invalidate(); return }
+            if Date().timeIntervalSince(started) > 30, !ScreenCapture.hasPermission {
+                self.offerTCCResetIfStale()
+            }
             if ScreenCapture.hasPermission {
                 t.invalidate()
                 self.permissionWatch = nil
@@ -606,30 +616,78 @@ final class OverlayController {
         }
     }
 
-    private func showPermissionAlert() {
-        let alert = NSAlert()
-        alert.messageText = "需要屏幕录制权限"
-        alert.informativeText = """
-        打开 系统设置 › 隐私与安全性 › 屏幕录制，勾选 MoShot，然后**退出并重新打开** MoShot —— 屏幕录制授权只对新启动的进程生效。
+    /// 系统里那条旧授权记录若指向旧签名身份，勾选只会改 auth_value、不会重写 csreq，
+    /// 于是永远匹配不上当前二进制 —— 表现为勾了仍反复提示授权。唯一解法是删掉这条记录
+    /// （tccutil reset），让系统按当前二进制重写一条，再重新授权。preflight 连续 30 秒
+    /// 仍为 false 时提示一次，5 分钟内不重复打扰。
+    private func offerTCCResetIfStale() {
+        guard resetPrompt == nil, !ScreenCapture.hasPermission else { return }
+        let now = Date().timeIntervalSince1970
+        if now - UserDefaults.standard.double(forKey: "tccResetOfferAt") < 300 { return }
+        UserDefaults.standard.set(now, forKey: "tccResetOfferAt")
+        PermLog.write("permission: 30s still false -> offer tccutil reset")
 
-        这次勾选之后，后续升级 MoShot 不需要再授权（已用固定签名身份绑定）。
-        """
-        alert.addButton(withTitle: "打开系统设置")
-        alert.addButton(withTitle: "取消")
-        let resp = alert.runModal()
-        if resp == .alertFirstButtonReturn {
-            // 先清掉失效条目：ad-hoc 签名重建后 TCC 里留着旧 cdhash 的记录，
-            // 不清掉的话系统设置里显示已勾选但实际不生效，勾选也不会重写。
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-            p.arguments = ["reset", "ScreenCapture", Bundle.main.bundleIdentifier ?? "com.moxian.moshot"]
-            try? p.run()
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 470, height: 212),
+                            styleMask: [.titled, .closable, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+        panel.title = "屏幕录制权限勾了还是不生效？"
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+
+        let label = NSTextField(wrappingLabelWithString: """
+        系统里可能留着一条指向旧版本 MoShot 的授权记录。在设置里勾选只改这条记录的开关，不会更新它绑定的程序身份，所以永远匹配不上当前版本。
+
+        点下面按钮清除旧记录，再在系统设置里重新勾选 MoShot。之后升级不再需要重新授权。
+        """)
+        label.frame = NSRect(x: 18, y: 68, width: 434, height: 130)
+        label.font = NSFont.systemFont(ofSize: 12)
+        panel.contentView?.addSubview(label)
+
+        let resetTarget = ClosureTarget { [weak self] in self?.resetTCCAndRelaunch() }
+        let laterTarget = ClosureTarget { [weak self] in self?.dismissResetPrompt() }
+        resetTargets = [resetTarget, laterTarget]
+
+        let reset = NSButton(title: "清除旧记录并重启", target: resetTarget, action: #selector(ClosureTarget.fire))
+        reset.bezelStyle = .rounded
+        reset.frame = NSRect(x: 18, y: 18, width: 168, height: 32)
+        let later = NSButton(title: "我自己去设置里勾", target: laterTarget, action: #selector(ClosureTarget.fire))
+        later.bezelStyle = .rounded
+        later.frame = NSRect(x: 198, y: 18, width: 158, height: 32)
+        panel.contentView?.addSubview(reset)
+        panel.contentView?.addSubview(later)
+
+        panel.center()
+        panel.orderFrontRegardless()
+        resetPrompt = panel
+    }
+
+    private func dismissResetPrompt() {
+        resetPrompt?.close()
+        resetPrompt = nil
+        resetTargets = []
+    }
+
+    private func resetTCCAndRelaunch() {
+        dismissResetPrompt()
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        p.arguments = ["reset", "ScreenCapture", Bundle.main.bundleIdentifier ?? "com.moxian.moshot"]
+        do {
+            try p.run()
             p.waitUntilExit()
-            _ = ScreenCapture.requestPermission()
-            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                NSWorkspace.shared.open(url)
-            }
+        } catch {
+            PermLog.write("tccutil reset failed: \(error)")
+            showToast("清除失败 · 可在终端执行 tccutil reset", seconds: 6)
+            return
         }
+        PermLog.write("tccutil reset done (exit \(p.terminationStatus)), relaunching")
+        showToast("旧授权记录已清除 · 重启后在设置里重新勾选 MoShot", seconds: 6)
+        let open = Process()
+        open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        open.arguments = ["-n", Bundle.main.bundleURL.path]
+        try? open.run()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { NSApp.terminate(nil) }
     }
 
     func flashStatus(_ text: String) {
@@ -708,4 +766,12 @@ final class ScrollFrameView: NSView {
             path.stroke()
         }
     }
+}
+
+
+/// NSButton 的闭包 target：OverlayController 不是 NSObject，不能用 #selector 直接挂自身方法
+final class ClosureTarget: NSObject {
+    private let handler: () -> Void
+    init(_ handler: @escaping () -> Void) { self.handler = handler }
+    @objc func fire() { handler() }
 }
