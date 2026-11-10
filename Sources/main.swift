@@ -1,8 +1,32 @@
 import Cocoa
 import ApplicationServices
 import Carbon.HIToolbox
+import Security
 
-let MoShotVersion = "1.1.0"
+let MoShotVersion = "1.1.1"
+
+/// 自己这把签名的 designated requirement，诊断时直接打出来，省得两头猜
+func selfDesignatedRequirement() -> String {
+    var code: SecCode?
+    guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return "unavailable" }
+    var staticCode: SecStaticCode?
+    guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return "unavailable" }
+    var req: SecRequirement?
+    guard SecCodeCopyDesignatedRequirement(staticCode, [], &req) == errSecSuccess, let req else { return "unavailable" }
+    var text: CFString?
+    guard SecRequirementCopyString(req, [], &text) == errSecSuccess, let text else { return "unavailable" }
+    return text as String
+}
+
+/// 父进程（responsible process 的粗略代理）：从终端跑时是终端，从 Finder/open 起时是 launchd 或 open
+func parentProcessLabel() -> String {
+    let ppid = getppid()
+    if let app = NSRunningApplication(processIdentifier: ppid) {
+        let name = app.localizedName ?? app.executableURL?.lastPathComponent ?? "?"
+        return "\(name)(pid=\(ppid))"
+    }
+    return "pid=\(ppid)"
+}
 
 // MARK: - CLI 入口（无 GUI，便于自动化验证与集成）
 
@@ -181,7 +205,9 @@ if args.contains("--diagnose") {
     for s in NSScreen.screens {
         lines.append("  screen \(Int(s.frame.width))x\(Int(s.frame.height))@\(s.backingScaleFactor)x")
     }
-    lines.append("screenPermission=\(ScreenCapture.hasPermission)")
+    lines.append("screenPermission=\(ScreenCapture.hasPermission)   // 从终端启动会继承终端身份，此值不可信，以下方 responsibleProcess 为准")
+    lines.append("responsibleProcess=\(parentProcessLabel())")
+    lines.append("designatedRequirement=\(selfDesignatedRequirement())")
     lines.append("accessibilityTrusted=\(AXIsProcessTrusted())   // 自动滚动截图需要它")
     let hkSpec = HotKey.parse(HotKey.defaultSpec()) ?? (UInt32(kVK_ANSI_A), UInt32(optionKey | shiftKey))
     let hk = HotKey(keyCode: hkSpec.0, modifiers: hkSpec.1) {}

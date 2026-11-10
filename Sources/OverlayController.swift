@@ -13,6 +13,7 @@ final class OverlayController {
     private var toastWindow: NSWindow?
     private var scrollFrame: NSWindow?
     private var permissionWatch: Timer?
+    private var probing = false
     private var ocrWindow: NSWindow?
     private(set) var isActive = false
 
@@ -20,28 +21,26 @@ final class OverlayController {
 
     func begin(fullScreen: Bool = false) {
         // 真机排障用：app 自己看到的权限状态（从终端跑 --diagnose 会继承终端权限，不可信）
-        let st = "begin: hasPermission=\(ScreenCapture.hasPermission) trusted=\(AXIsProcessTrusted())\n"
-        if let h = FileHandle(forWritingAtPath: "/tmp/moshot-perm.log") {
-            h.seekToEndOfFile(); h.write(st.data(using: .utf8)!); h.closeFile()
-        } else {
-            try? st.write(toFile: "/tmp/moshot-perm.log", atomically: true, encoding: .utf8)
-        }
+        PermLog.write("begin: hasPermission=\(ScreenCapture.hasPermission) trusted=\(AXIsProcessTrusted())")
         guard !isActive else { return }
         isActive = true
         NSApp.activate(ignoringOtherApps: true)
 
-        // 首次使用：触发系统授权（用户同意后当前进程即可抓屏，通常无需重启）
+        // 首次使用：触发系统授权。注意 CGRequestScreenCaptureAccess() 在首次授权时
+        // 通常返回 false（授权对新进程才生效），这里不能直接放弃，要 1s 轮询等它变 true，
+        // 命中后自动继续这次截图，不让用户再按一次热键。
         if !ScreenCapture.hasPermission {
-            // 这里只管调用系统授权（它会弹 macOS 自己的授权窗）。
-            // 系统窗弹过了就别再叠自己的模态面板——两个框叠着弹只会让人以为程序有病。
             let granted = ScreenCapture.requestPermission()
             if !granted {
-                isActive = false
-                permissionFallback()
+                waitForPermissionThenCapture(fullScreen: fullScreen)
                 return
             }
         }
 
+        capture(fullScreen: fullScreen)
+    }
+
+    private func capture(fullScreen: Bool) {
         Task.detached {
             let shots = await ScreenCapture.captureAll()
             DispatchQueue.main.async {
@@ -49,9 +48,56 @@ final class OverlayController {
                     self.isActive = false
                     // 抓不到画面：可能是权限没生效或 ScreenCaptureKit 拒绝，
                     // 同样不弹第二个框，走同一条轻提示
+                    PermLog.write("begin: capture empty (preflight=\(ScreenCapture.hasPermission))")
                     self.permissionFallback()
                     return
                 }
+                self.present(shots, fullScreen: fullScreen)
+            }
+        }
+    }
+
+    /// 等用户在系统设置里勾上权限：命中后自动接着抓屏，无需再按热键，也无需重启。
+    /// 两条判据并行：preflight 每秒查一次；每 5 秒真抓一次做探针（有些版本授权后
+    /// 当前进程的 preflight 仍是旧值，但实际已经能抓屏）。
+    private func waitForPermissionThenCapture(fullScreen: Bool) {
+        permissionWatch?.invalidate()
+        let deadline = Date().addingTimeInterval(180)
+        var tick = 0
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] t in
+            guard let self else { t.invalidate(); return }
+            tick += 1
+            if ScreenCapture.hasPermission {
+                t.invalidate()
+                self.permissionWatch = nil
+                PermLog.write("permission: granted while waiting, continue capture")
+                self.capture(fullScreen: fullScreen)
+            } else if tick % 5 == 0 {
+                self.probePermissionByCapture(fullScreen: fullScreen)
+            } else if Date() > deadline {
+                t.invalidate()
+                self.permissionWatch = nil
+                self.isActive = false
+                PermLog.write("permission: wait timeout 180s")
+                self.showToast("还没拿到屏幕录制权限 · 勾选后自动继续", seconds: 5)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        permissionWatch = timer
+    }
+
+    /// 授权后即使 preflight 还是 false，实际抓屏可能已经通了：真抓一次验证
+    private func probePermissionByCapture(fullScreen: Bool) {
+        guard !probing, isActive else { return }
+        probing = true
+        Task.detached {
+            let shots = await ScreenCapture.captureAll()
+            DispatchQueue.main.async {
+                self.probing = false
+                guard self.isActive, !shots.isEmpty else { return }
+                self.permissionWatch?.invalidate()
+                self.permissionWatch = nil
+                PermLog.write("permission: capture probe succeeded, continue")
                 self.present(shots, fullScreen: fullScreen)
             }
         }
@@ -539,7 +585,7 @@ final class OverlayController {
                 self.permissionWatch = nil
                 // 不自动退出：之前那版自动 open -n + terminate 把进程搞没了，
                 // 热键跟着失灵且用户不知道发生了什么。改成一句话指引，重启由人点一次。
-                self.showToast("权限已生效 · 菜单栏「重新启动 MoShot」生效", seconds: 5)
+                self.showToast("权限已生效 · 重按 ⌥⇧A 即可截图（仍无画面再重启）", seconds: 5)
             } else if Date() > deadline {
                 t.invalidate()
                 self.permissionWatch = nil
@@ -551,7 +597,7 @@ final class OverlayController {
 
     /// 授权兜底：一条不打断操作的提示 + 自动打开设置页，替代原来的模态面板
     private func permissionFallback() {
-        showToast("需要屏幕录制权限 · 勾选后会自动重启生效", seconds: 4.5)
+        showToast("需要屏幕录制权限 · 勾选后自动继续，仍无画面请点菜单栏「重新启动 MoShot」", seconds: 6)
         watchPermissionAndRelaunch()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {

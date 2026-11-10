@@ -41,20 +41,27 @@
 ```bash
 git clone https://github.com/29206394/moshot.git
 cd moshot
-./build.sh            # 产物在 build/MoShot.app
+./scripts/trust-cert.sh   # 一次性：把签名证书导入登录钥匙串并标记信任（会要求输入一次密码）
+./build.sh                # 产物在 build/MoShot.app
 open build/MoShot.app
 ```
 
 也可以把 `build/MoShot.app` 拖进 `/Applications`。
 
+> 为什么需要 trust-cert：MoShot 用固定的本地自签证书签名，屏幕录制授权绑定在「identifier + 证书根」上，重建不掉授权。证书不在钥匙串或不信任时，TCC 匹配不上记录，表现为设置里勾了却一直提示授权。脚本可重入，已经装过就会直接跳过。
+
 ### 从 Release 下载
 
-下载 `MoShot.app.zip` 解压后放入 `/Applications`。因为没做 Apple 公证，首次打开需要放行：
+下载 `MoShot-v<版本>.zip`，解压后目录里是 `MoShot.app`、`trust-cert.sh`、`MoShotSigning.cer`：
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/MoShot.app
+./trust-cert.sh                              # 导入并信任签名证书（要求输入一次密码）
+xattr -dr com.apple.quarantine MoShot.app    # 没做 Apple 公证，首次打开需放行 quarantine
+mv MoShot.app /Applications/
 open /Applications/MoShot.app
 ```
+
+不想跑脚本也可以在「钥匙串访问」里导入 `MoShotSigning.cer`，双击证书把「代码签名」设为「始终信任」。
 
 ## 首次使用：屏幕录制权限
 
@@ -62,11 +69,15 @@ macOS 不允许任何 app 在未授权时读取屏幕内容。
 
 1. 启动 MoShot，按 `⌥⇧A`
 2. 系统弹出「MoShot 想要录制此电脑的屏幕」→ 点「允许」
-3. 直接继续截图
+3. 授权落定后 MoShot 每秒自检一次，命中会自动接着完成这次截图，不用再按一次热键
 
-如果没弹窗或点过拒绝，到「系统设置 › 隐私与安全性 › 屏幕录制」里勾选 MoShot，然后重新发起截图。
+如果没弹窗或点过拒绝，到「系统设置 › 隐私与安全性 › 屏幕录制」里勾选 MoShot。勾上之后：
+- 权限生效：MoShot 自动继续
+- 权限没生效（系统偶发缓存旧记录）：点菜单栏「重新启动 MoShot」
 
-> 用 `./build.sh` 重新构建后，ad-hoc 签名会变，系统可能要求重新勾选一次。稳定使用就别反复重建。
+排障日志在 `/tmp/moshot-perm.log`，每次启动、每次请求授权、SCK / screencapture CLI 的失败原因都会记一行。
+
+> 用 `./build.sh` 重新打包不需要重新授权：签名身份与证书根固定。前提是目标机器跑过一次 `./scripts/trust-cert.sh`。
 
 ## 快捷键
 
@@ -100,7 +111,7 @@ defaults write com.moxian.moshot hotkey "cmd+shift+A"
 ```bash
 MoShot --capture out.png     # 抓主屏存 PNG
 MoShot --selftest            # 18 项内置自检（渲染/裁剪/马赛克/编码/剪贴板/OCR）
-MoShot --diagnose            # 打印屏幕、权限、热键、状态栏就绪状态
+MoShot --diagnose            # 打印屏幕、权限、热键、状态栏就绪状态（含自身 DR 与 responsible process）
 MoShot --version
 ```
 
@@ -135,7 +146,7 @@ Sources/
 - 选区限制在单块屏幕内，不支持跨屏框选。
 - 贴图窗口不随原窗口联动（不做「截图跟随」）。
 - OCR 首次调用约 30 秒（Vision 模型冷加载），之后是秒级。
-- 没有做代码签名与公证，分发需要手动放行 quarantine。
+- 用本地自签证书签名（无 Apple 公证），分发时目标机器需先信任证书并放行 quarantine。
 - 只在 macOS 14 / 15 / 26 上测过。
 
 ## License

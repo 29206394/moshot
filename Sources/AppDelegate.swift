@@ -104,8 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 真机排障：记录 app 自己启动时看到的权限（终端跑 --diagnose 会继承终端权限）
-        let boot = "launch: hasPermission=\(ScreenCapture.hasPermission) pid=\(ProcessInfo.processInfo.processIdentifier)\n"
-        try? boot.write(toFile: "/tmp/moshot-perm.log", atomically: true, encoding: .utf8)
+        PermLog.write("launch: hasPermission=\(ScreenCapture.hasPermission) version=\(MoShotVersion) req=\(selfDesignatedRequirement())")
 
         StatusBar.shared = StatusBar()
         let spec = HotKey.defaultSpec()
