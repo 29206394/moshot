@@ -683,6 +683,10 @@ final class OverlayController {
         }
         PermLog.write("tccutil reset done (exit \(p.terminationStatus)), relaunching")
         showToast("旧授权记录已清除 · 重启后在设置里重新勾选 MoShot", seconds: 6)
+        if QuitIntent.isLaunchdManaged {
+            // 托管态交给 launchd 拉回：不要自己 open -n，否则会多出一个非托管实例
+            QuitIntent.exitForRelaunch("tccutil reset")
+        }
         let open = Process()
         open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         open.arguments = ["-n", Bundle.main.bundleURL.path]

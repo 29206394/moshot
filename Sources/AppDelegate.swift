@@ -60,7 +60,11 @@ final class StatusBar {
     @objc private func shotRegion() { OverlayController.shared.begin(fullScreen: false) }
     @objc private func shotFull() { OverlayController.shared.begin(fullScreen: true) }
     @objc private func restartApp() {
-        // 交给 launchd 起新实例：直接 Process 起的子 shell 会随 NSApp.terminate
+        if QuitIntent.isLaunchdManaged {
+            // 托管态：非 0 退出，launchd 立刻拉回一个新实例（不用再自己 open -n，避免双实例）
+            QuitIntent.exitForRelaunch("menu restart")
+        }
+        // 非托管态（手动双击起的）：直接 Process 起的子 shell 会随 NSApp.terminate
         // 一起被杀（sleep 还没结束就被带走），新实例根本起不来，app 就凭空消失了。
         let label = "com.moxian.moshot.relaunch.\(Int(Date().timeIntervalSince1970))"
         let cmd = "sleep 1.2; /usr/bin/open -n \"\(Bundle.main.bundlePath)\""
@@ -73,7 +77,12 @@ final class StatusBar {
     }
 
     @objc private func openFolder() { NSWorkspace.shared.open(Prefs.saveDirectory) }
-    @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func quit() {
+        // 用户主动退出：写标记，让 applicationShouldTerminate 放行正常退出，
+        // launchd 那边 KeepAlive{SuccessfulExit:false} 就不会把图标又拉出来。
+        QuitIntent.markUserQuit()
+        NSApp.terminate(nil)
+    }
 
     @objc private func showAbout() {
         let alert = NSAlert()
@@ -120,5 +129,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// 退出语义分流：
+    /// - 菜单「退出」已写 user-quit 标记 → 真退出（exit 0），launchd 不拉起
+    /// - 其它任何来路的终止（系统「退出并重新打开」、TCC 刷新、外部 kill 之外的正常 terminate）
+    ///   → 以 75 退出，让 KeepAlive{SuccessfulExit:false} 把进程拉回来
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if QuitIntent.consumeUserQuit() {
+            PermLog.write("quit: user-initiated, stay down")
+            return .terminateNow
+        }
+        if QuitIntent.isLaunchdManaged {
+            QuitIntent.exitForRelaunch("external terminate")
+        }
+        return .terminateNow
+    }
+}
+
+/// 退出意图与 launchd 保活的约定：退出码 0 = 用户主动退出（保活不拉起），
+/// 非 0 = 程序自己或系统发起的退出（交 launchd 10 秒内拉回）。
+enum QuitIntent {
+    static let flagPath = NSHomeDirectory() + "/Library/Application Support/MoShot/user-quit.flag"
+
+    /// ppid=1 表示由 launchd 托管；手动双击 / open -a 起的 ppid 不是 1
+    static var isLaunchdManaged: Bool { getppid() == 1 }
+
+    static func markUserQuit() {
+        let dir = (flagPath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: flagPath, contents: Data("user".utf8))
+    }
+
+    static func consumeUserQuit() -> Bool {
+        guard FileManager.default.fileExists(atPath: flagPath) else { return false }
+        try? FileManager.default.removeItem(atPath: flagPath)
+        return true
+    }
+
+    /// 需要被拉回时用它退出：非 0 状态码是给 launchd 的信号
+    static func exitForRelaunch(_ reason: String) -> Never {
+        PermLog.write("exit(75) for relaunch: \(reason)")
+        exit(75)
     }
 }

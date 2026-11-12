@@ -3,7 +3,7 @@ import ApplicationServices
 import Carbon.HIToolbox
 import Security
 
-let MoShotVersion = "1.1.1"
+let MoShotVersion = "1.1.2"
 
 /// 自己这把签名的 designated requirement，诊断时直接打出来，省得两头猜
 func selfDesignatedRequirement() -> String {
